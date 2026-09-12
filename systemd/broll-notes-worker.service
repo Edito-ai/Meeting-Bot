@@ -1,0 +1,15 @@
+[Unit]
+Description=Broll Notetaker notes-generation worker (RQ queue: generate-notes)
+After=network.target mongod.service redis-server.service
+
+[Service]
+User=broll
+WorkingDirectory=/opt/broll-notetaker
+EnvironmentFile=/opt/broll-notetaker/.env
+Environment=PYTHONPATH=/opt/broll-notetaker:/opt/broll-notetaker/backend
+ExecStart=/bin/sh -c '/opt/broll-notetaker/.venv/bin/rq worker generate-notes --url "$REDIS_URL"'
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

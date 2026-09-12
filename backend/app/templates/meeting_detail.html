@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}{{ meeting.title }} — Broll Notetaker{% endblock %}
+{% block content %}
+<a class="back" href="/">&larr; All demos</a>
+<h1>{{ meeting.title }}</h1>
+<p class="meta">
+  Scheduled {{ meeting.scheduled_start }} &middot;
+  <span class="badge status-{{ meeting.status }}">{{ meeting.status }}</span>
+</p>
+
+{% if notes %}
+<section class="card">
+  <h2>Summary</h2>
+  <p>{{ notes.summary }}</p>
+
+  <h3>Key points</h3>
+  <ul>{% for p in notes.key_points %}<li>{{ p }}</li>{% endfor %}</ul>
+
+  <h3>Objections / concerns</h3>
+  <ul>{% for o in notes.objections %}<li>{{ o }}</li>{% else %}<li class="empty">None noted</li>{% endfor %}</ul>
+
+  <h3>Action items</h3>
+  <ul>{% for a in notes.action_items %}<li>{{ a }}</li>{% else %}<li class="empty">None noted</li>{% endfor %}</ul>
+
+  <h3>Next steps</h3>
+  <ul>{% for n in notes.next_steps %}<li>{{ n }}</li>{% else %}<li class="empty">None noted</li>{% endfor %}</ul>
+</section>
+{% else %}
+<p class="empty">Notes not ready yet (status: {{ meeting.status }}).</p>
+{% endif %}
+
+<section class="card">
+  <h2>Attendance</h2>
+  <table>
+    <thead><tr><th>Name</th><th>Joined</th><th>Left</th></tr></thead>
+    <tbody>
+      {% for p in participants %}
+      <tr><td>{{ p.name }}</td><td>{{ p.join_at }}</td><td>{{ p.leave_at or "still in call" }}</td></tr>
+      {% else %}
+      <tr><td colspan="3" class="empty">No attendance captured</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="card">
+  <h2>Transcript</h2>
+  <div class="transcript">
+    {% for s in segments %}
+    <p><strong>{{ s.speaker or "Unknown" }}:</strong> {{ s.text }}</p>
+    {% else %}
+    <p class="empty">No transcript yet.</p>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

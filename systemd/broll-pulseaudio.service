@@ -1,0 +1,19 @@
+[Unit]
+Description=PulseAudio virtual sink for Broll meet-worker (captures Chromium's meeting audio)
+After=network.target
+
+[Service]
+User=broll
+# systemd creates/owns /run/broll-pulse for us and cleans it up on stop.
+RuntimeDirectory=broll-pulse
+Environment=XDG_RUNTIME_DIR=/run/broll-pulse
+ExecStart=/usr/bin/pulseaudio --exit-idle-time=-1 --disallow-exit=1 --log-target=journal
+ExecStartPost=/bin/sleep 2
+ExecStartPost=/usr/bin/pactl load-module module-null-sink sink_name=meet_sink sink_properties=device.description=MeetSink
+ExecStartPost=/usr/bin/pactl set-default-sink meet_sink
+ExecStartPost=/usr/bin/pactl set-default-source meet_sink.monitor
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

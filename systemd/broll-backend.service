@@ -1,0 +1,16 @@
+[Unit]
+Description=Broll Notetaker backend (dashboard + API + in-process calendar scheduler)
+After=network.target mongod.service redis-server.service
+
+[Service]
+User=broll
+WorkingDirectory=/opt/broll-notetaker
+EnvironmentFile=/opt/broll-notetaker/.env
+# "app" lives at backend/app, not repo root, so backend/ needs to be on the path too.
+Environment=PYTHONPATH=/opt/broll-notetaker:/opt/broll-notetaker/backend
+ExecStart=/opt/broll-notetaker/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
