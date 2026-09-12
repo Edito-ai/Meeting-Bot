@@ -20,7 +20,9 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./secrets:/app/secrets:ro
+      # Not read-only: calendar_client.py writes the refreshed OAuth token back to this
+      # same file in place (see _get_credentials in backend/app/calendar_client.py).
+      - ./secrets:/app/secrets
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
       interval: 15s
