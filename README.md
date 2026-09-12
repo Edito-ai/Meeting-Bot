@@ -2,8 +2,14 @@
 
 Self-hosted bot that watches for scheduled demo calls, joins the Google Meet automatically,
 records attendance (who joined/left and when) and the full conversation, then generates
-structured notes — all built in-house, no third-party meeting-bot SaaS, no containers.
-Every service runs as a plain Python process (via systemd) directly on your server.
+structured notes — all built in-house, no third-party meeting-bot SaaS.
+
+Two ways to run it:
+- **Docker** (recommended for a GCP VM or any Docker host) — see
+  [`docs/deploy-gcp.md`](docs/deploy-gcp.md). One `docker compose up -d` starts the dashboard,
+  both queue workers, the meet-bot, Mongo, and Redis.
+- **Bare metal via systemd** (no Docker) — the original design, kept below. Every service runs
+  as a plain Python process directly on the server.
 
 ## How it works
 

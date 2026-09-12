@@ -1,0 +1,65 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+# MongoDB and Redis are both hosted externally (Atlas + Upstash) per the values already
+# in .env - MONGODB_URI/REDIS_URL flow straight through from .env, no local DB containers.
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    restart: unless-stopped
+    logging: *default-logging
+    env_file: .env
+    environment:
+      GOOGLE_CALENDAR_TOKEN_PATH: /app/secrets/google-calendar-token.json
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./secrets:/app/secrets:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  notes-worker:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    restart: unless-stopped
+    logging: *default-logging
+    command: ["sh", "-c", "rq worker generate-notes --url \"$REDIS_URL\""]
+    env_file: .env
+
+  meet-worker:
+    build:
+      context: .
+      dockerfile: docker/meet-worker.Dockerfile
+    restart: unless-stopped
+    logging: *default-logging
+    shm_size: "2gb"
+    env_file: .env
+    environment:
+      GOOGLE_AUTH_STATE_PATH: /app/secrets/google-auth-state.json
+      AUDIO_OUTPUT_DIR: /app/data/audio
+    volumes:
+      - ./secrets:/app/secrets:ro
+      - audio_data:/app/data/audio
+
+  transcription-worker:
+    build:
+      context: .
+      dockerfile: docker/transcription-worker.Dockerfile
+    restart: unless-stopped
+    logging: *default-logging
+    env_file: .env
+    volumes:
+      - audio_data:/app/data/audio
+
+volumes:
+  audio_data:

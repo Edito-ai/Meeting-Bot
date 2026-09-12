@@ -1,0 +1,4 @@
+# Shared by every service (common/, all workers, backend).
+pymongo==4.8.0
+redis==5.0.8
+rq==1.16.2
