@@ -8,6 +8,7 @@ import os
 import re
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 
 from playwright.sync_api import Browser, BrowserContext, Page, Playwright
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
@@ -73,7 +74,18 @@ def join_meeting(context: BrowserContext, meet_url: str) -> tuple[Page, datetime
         pass
 
     join_button = page.get_by_role("button", name=re.compile(r"^(join now|ask to join)$", re.I))
-    join_button.click(timeout=15000)
+    try:
+        join_button.click(timeout=15000)
+    except PlaywrightTimeoutError:
+        # Join button never showed up - most likely Google blocked the reused auth state
+        # with a re-verification/sign-in screen. Dump what was actually on screen so this
+        # is debuggable after the fact instead of a bare timeout.
+        debug_dir = Path(os.environ.get("AUDIO_OUTPUT_DIR", "/app/data/audio")).parent / "debug"
+        debug_dir.mkdir(parents=True, exist_ok=True)
+        page.screenshot(path=str(debug_dir / "join_failure.png"))
+        (debug_dir / "join_failure.html").write_text(page.content(), encoding="utf-8")
+        logger.error("Join button never appeared. Page title=%r url=%r - see %s", page.title(), page.url, debug_dir)
+        raise
 
     # Confirm we're actually in the call.
     page.get_by_role("button", name=re.compile("leave call", re.I)).wait_for(timeout=60_000)
