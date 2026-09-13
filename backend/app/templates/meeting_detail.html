@@ -4,7 +4,7 @@
 <a class="back" href="/">&larr; All demos</a>
 <h1>{{ meeting.title }}</h1>
 <p class="meta">
-  Scheduled {{ meeting.scheduled_start }} &middot;
+  Scheduled {{ meeting.scheduled_start | ist }} &middot;
   <span class="badge status-{{ meeting.status }}">{{ meeting.status }}</span>
 </p>
 
@@ -35,7 +35,7 @@
     <thead><tr><th>Name</th><th>Joined</th><th>Left</th></tr></thead>
     <tbody>
       {% for p in participants %}
-      <tr><td>{{ p.name }}</td><td>{{ p.join_at }}</td><td>{{ p.leave_at or "still in call" }}</td></tr>
+      <tr><td>{{ p.name }}</td><td>{{ p.join_at | ist }}</td><td>{{ (p.leave_at | ist) or "still in call" }}</td></tr>
       {% else %}
       <tr><td colspan="3" class="empty">No attendance captured</td></tr>
       {% endfor %}

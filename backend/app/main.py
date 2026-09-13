@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -17,6 +18,22 @@ logging.basicConfig(level=logging.INFO)
 
 BASE_DIR = Path(__file__).parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+
+# All timestamps are stored in Mongo as UTC (repo.py always writes datetime.now(timezone.utc)),
+# which is correct for storage/comparisons - but the dashboard is for an India-based team, so
+# render them in IST rather than making people mentally add 5:30 to every timestamp they see.
+_IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def _to_ist(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(_IST).strftime("%d %b %Y, %I:%M:%S %p IST")
+
+
+templates.env.filters["ist"] = _to_ist
 
 
 @asynccontextmanager

@@ -15,7 +15,7 @@
     {% for m in meetings %}
     <tr>
       <td><a href="/meetings/{{ m.id }}">{{ m.title }}</a></td>
-      <td>{{ m.scheduled_start }}</td>
+      <td>{{ m.scheduled_start | ist }}</td>
       <td><span class="badge status-{{ m.status }}">{{ m.status }}</span></td>
       <td>{{ m.actual_join_at and "recorded" or "—" }}</td>
     </tr>
