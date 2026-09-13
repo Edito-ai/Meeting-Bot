@@ -47,10 +47,12 @@ services:
     shm_size: "2gb"
     env_file: .env
     environment:
-      GOOGLE_AUTH_STATE_PATH: /app/secrets/google-auth-state.json
+      GOOGLE_CHROME_PROFILE_DIR: /app/secrets/chrome-profile
       AUDIO_OUTPUT_DIR: /app/data/audio
     volumes:
-      - ./secrets:/app/secrets:ro
+      # Not read-only: Chrome writes into its profile dir on every launch (cookies,
+      # session refresh, etc.) - see scripts/bootstrap_auth.py and join_meeting.py.
+      - ./secrets/chrome-profile:/app/secrets/chrome-profile
       - audio_data:/app/data/audio
 
   transcription-worker:

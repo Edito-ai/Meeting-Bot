@@ -5,6 +5,7 @@ across restarts (no separate delayed-job scheduler needed)."""
 import asyncio
 import logging
 import os
+from datetime import datetime, timedelta, timezone
 
 from common import repo
 from common.queue import QUEUE_JOIN_MEETING, get_queue
@@ -18,6 +19,12 @@ DISCOVERY_WINDOW_MINUTES = 60
 JOIN_LEAD_MINUTES = int(os.environ.get("JOIN_LEAD_MINUTES", "1"))
 # If we somehow missed the join window by more than this, don't join late/confuse attendees.
 MAX_LATE_JOIN_MINUTES = 5
+
+# How often to verify the bot's Google session still works, so a dead session (Google
+# invalidated it) gets caught and alerted on hours before it'd otherwise silently fail a
+# real demo join. See meet_worker.worker.check_session_health_job.
+SESSION_HEALTHCHECK_INTERVAL_MINUTES = int(os.environ.get("SESSION_HEALTHCHECK_INTERVAL_MINUTES", "240"))
+_last_healthcheck_at: datetime | None = None
 
 
 def _upsert_meeting(event: CalendarEvent) -> None:
@@ -53,12 +60,31 @@ def _enqueue_due_meetings() -> None:
         logger.info("Enqueued join job for meeting %s", meeting["id"])
 
 
+def _maybe_enqueue_session_healthcheck() -> None:
+    global _last_healthcheck_at
+    now = datetime.now(timezone.utc)
+    if _last_healthcheck_at is not None and now - _last_healthcheck_at < timedelta(
+        minutes=SESSION_HEALTHCHECK_INTERVAL_MINUTES
+    ):
+        return
+    _last_healthcheck_at = now
+    # Enqueued on the same queue meet-worker's single RQ worker processes join jobs from,
+    # so this can never run at the same time as an active call (it'd otherwise fight over
+    # the persistent Chrome profile, which only one Chromium process can hold at a time).
+    get_queue(QUEUE_JOIN_MEETING).enqueue(
+        "meet_worker.worker.check_session_health_job",
+        job_timeout="5m",
+    )
+    logger.info("Enqueued Google session health check")
+
+
 def _tick() -> None:
     try:
         events = fetch_upcoming_demo_events(DISCOVERY_WINDOW_MINUTES)
         for event in events:
             _upsert_meeting(event)
         _enqueue_due_meetings()
+        _maybe_enqueue_session_healthcheck()
     except Exception:
         logger.exception("Scheduler tick failed")
 

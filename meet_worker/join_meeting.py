@@ -2,7 +2,11 @@
 
 Google actively fights scripted logins (captchas, "browser may not be secure"), so
 rather than automating the login form on every join, we authenticate ONCE manually
-(see scripts/bootstrap_auth.py) and reuse the saved storage_state (cookies/localStorage).
+(see scripts/bootstrap_auth.py) and reuse the saved Chrome profile. A full persistent
+profile (not just a storage_state cookie dump) is what we reuse here - Google's risk
+engine trusts a consistent device profile far longer than bare cookies replayed into a
+fresh context every launch, which used to get the session flagged and bounced to a
+"Sign in" page within a day or two of production use.
 """
 import os
 import re
@@ -10,13 +14,13 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
-from playwright.sync_api import Browser, BrowserContext, Page, Playwright
+from playwright.sync_api import BrowserContext, Page, Playwright
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 logger = logging.getLogger("join_meeting")
 
-STORAGE_STATE_PATH = os.environ.get(
-    "GOOGLE_AUTH_STATE_PATH", "/opt/broll-notetaker/secrets/google-auth-state.json"
+CHROME_PROFILE_DIR = os.environ.get(
+    "GOOGLE_CHROME_PROFILE_DIR", "/opt/broll-notetaker/secrets/chrome-profile"
 )
 BOT_DISPLAY_NAME = os.environ.get("BOT_DISPLAY_NAME", "Broll Notetaker (Recording)")
 
@@ -30,26 +34,27 @@ def _click_if_present(locator, timeout: int = 5000) -> bool:
         return False
 
 
-def launch_authenticated_context(playwright: Playwright) -> tuple[Browser, BrowserContext]:
-    if not os.path.exists(STORAGE_STATE_PATH):
+def launch_authenticated_context(playwright: Playwright) -> BrowserContext:
+    if not os.path.isdir(CHROME_PROFILE_DIR) or not os.listdir(CHROME_PROFILE_DIR):
         raise RuntimeError(
-            f"No saved Google auth state at {STORAGE_STATE_PATH}. "
-            "Run scripts/bootstrap_auth.py locally once and copy the output into /opt/broll-notetaker/secrets/."
+            f"No saved Chrome profile at {CHROME_PROFILE_DIR}. "
+            "Run scripts/bootstrap_auth.py locally once and copy secrets/chrome-profile/ into "
+            "/opt/broll-notetaker/secrets/."
         )
 
-    browser = playwright.chromium.launch(
+    # launch_persistent_context (not launch() + new_context(storage_state=...)) is what makes
+    # the login stick - see the module docstring for why.
+    context = playwright.chromium.launch_persistent_context(
+        user_data_dir=CHROME_PROFILE_DIR,
         headless=False,  # Meet degrades/blocks headless Chromium; we run under Xvfb instead.
+        permissions=["microphone", "camera"],
         args=[
             "--use-fake-ui-for-media-stream",  # auto-accept mic/cam permission prompts
             "--disable-blink-features=AutomationControlled",
             "--no-sandbox",
         ],
     )
-    context = browser.new_context(
-        storage_state=STORAGE_STATE_PATH,
-        permissions=["microphone", "camera"],
-    )
-    return browser, context
+    return context
 
 
 def join_meeting(context: BrowserContext, meet_url: str) -> tuple[Page, datetime]:
@@ -117,3 +122,15 @@ def is_call_still_active(page: Page) -> bool:
 def leave_meeting(page: Page) -> None:
     if not _click_if_present(page.get_by_role("button", name=re.compile("leave call", re.I)), timeout=5000):
         logger.warning("Leave call button not found, closing page instead")
+
+
+def is_session_signed_in(context: BrowserContext) -> bool:
+    """Lightweight probe for the periodic health-check job: loads Meet without joining
+    anything and checks whether Google bounced us to a sign-in page, which is exactly
+    what happens once the saved Chrome profile's session dies (see module docstring)."""
+    page = context.new_page()
+    try:
+        page.goto("https://meet.google.com/landing", wait_until="domcontentloaded", timeout=30_000)
+        return "accounts.google.com" not in page.url and "sign in" not in page.title().lower()
+    finally:
+        page.close()

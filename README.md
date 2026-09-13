@@ -80,8 +80,12 @@ pip install playwright
 playwright install chromium
 python scripts/bootstrap_auth.py
 ```
-This opens a real browser — log into the bot account, then press Enter. It saves
-`secrets/google-auth-state.json` locally; copy that file to the server in the next step.
+This opens a real browser — log into the bot account, then press Enter. It saves a full
+persistent Chrome profile to `secrets/chrome-profile/` locally (not just a cookie dump —
+that's what makes the login survive more than a couple days in production instead of
+getting flagged by Google's risk engine); copy that directory to the server in the next
+step. A periodic health-check job (`meet_worker.worker.check_session_health_job`) posts to
+Slack if this session ever dies, so you'll know to re-run this before it costs a demo.
 
 ### 4. Environment + secrets on the server
 ```bash
@@ -91,7 +95,7 @@ cp .env.example .env
 ```
 Then place on the server:
 - `/opt/broll-notetaker/secrets/google-calendar-token.json` (from step 2)
-- `/opt/broll-notetaker/secrets/google-auth-state.json` (copied from step 3)
+- `/opt/broll-notetaker/secrets/chrome-profile/` (copied from step 3)
 
 ### 5. Run the setup script (packages, MongoDB, Redis, venv, Playwright's Chromium)
 ```bash

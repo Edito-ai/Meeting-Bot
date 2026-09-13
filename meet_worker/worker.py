@@ -9,12 +9,14 @@ from playwright.sync_api import sync_playwright
 
 from common import repo
 from common.queue import QUEUE_TRANSCRIBE, get_queue
+from common.slack import notify_session_invalid
 
 from .join_meeting import (
     launch_authenticated_context,
     join_meeting,
     post_identification_message,
     is_call_still_active,
+    is_session_signed_in,
     leave_meeting,
 )
 from .attendance_tracker import AttendanceTracker
@@ -32,7 +34,7 @@ def join_meeting_job(meeting_id: str, meet_url: str) -> None:
     logger.info("Joining meeting %s at %s", meeting_id, meet_url)
 
     with sync_playwright() as playwright:
-        browser, context = launch_authenticated_context(playwright)
+        context = launch_authenticated_context(playwright)
         try:
             page, joined_at = join_meeting(context, meet_url)
             repo.mark_joined(meeting_id, joined_at)
@@ -76,4 +78,27 @@ def join_meeting_job(meeting_id: str, meet_url: str) -> None:
             repo.set_meeting_status(meeting_id, "failed", failure_reason=str(exc))
         finally:
             context.close()
-            browser.close()
+
+
+def check_session_health_job() -> None:
+    """Periodic job (enqueued by backend/app/scheduler.py) that verifies the bot's saved
+    Google session still works, without waiting for a real demo to fail first. Runs on the
+    same RQ queue as join_meeting_job, so it's never processing at the same time as an
+    active call - important since the persistent Chrome profile can only be opened by one
+    Chromium process at a time."""
+    logger.info("Running session health check")
+    with sync_playwright() as playwright:
+        context = launch_authenticated_context(playwright)
+        try:
+            alive = is_session_signed_in(context)
+        finally:
+            context.close()
+
+    if alive:
+        logger.info("Session health check passed")
+    else:
+        logger.error("Session health check FAILED - Google session is signed out")
+        notify_session_invalid(
+            "Meet bot's Google session is signed out. Re-run scripts/bootstrap_auth.py "
+            "and redeploy secrets/chrome-profile/ before the next demo."
+        )

@@ -52,11 +52,17 @@ gcloud compute scp --recurse . broll-notetaker:~/broll-notetaker --zone=us-centr
 The two Google secrets are generated **locally**, same as the non-Docker setup in the main
 README — Google blocks scripted logins, so these still need a real browser on your laptop:
 - `scripts/bootstrap_calendar_auth.py` -> `secrets/google-calendar-token.json`
-- `scripts/bootstrap_auth.py` -> `secrets/google-auth-state.json`
+- `scripts/bootstrap_auth.py` -> `secrets/chrome-profile/` (a full persistent Chrome
+  profile, not just a cookie dump — see the comment in `meet_worker/join_meeting.py` for
+  why that matters for how long the login survives)
 
 Make sure both end up in `~/broll-notetaker/secrets/` on the VM (the `scp --recurse` above
 carries them over if they already existed locally when you ran it; otherwise copy them up
 after generating them).
+
+A periodic job checks whether this session is still signed in and posts to Slack if it
+isn't (`SESSION_HEALTHCHECK_INTERVAL_MINUTES` in `.env`, default every 4h) — so you find out
+and can re-run `bootstrap_auth.py` before it silently costs a real demo.
 
 ## 4. Configure environment
 
@@ -77,7 +83,7 @@ Fill in at least:
 Redis instances (whatever you're already using) - `docker-compose.yml` does not run local
 Mongo/Redis containers, it passes these straight through from `.env`.
 
-Leave `GOOGLE_CALENDAR_TOKEN_PATH`, `GOOGLE_AUTH_STATE_PATH`, and `AUDIO_OUTPUT_DIR` as-is -
+Leave `GOOGLE_CALENDAR_TOKEN_PATH`, `GOOGLE_CHROME_PROFILE_DIR`, and `AUDIO_OUTPUT_DIR` as-is -
 `docker-compose.yml` overrides those three to point at the in-container paths regardless of
 what's in `.env`.
 
