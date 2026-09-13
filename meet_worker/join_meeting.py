@@ -78,7 +78,12 @@ def join_meeting(context: BrowserContext, meet_url: str) -> tuple[Page, datetime
     except PlaywrightTimeoutError:
         pass
 
-    join_button = page.get_by_role("button", name=re.compile(r"^(join now|ask to join)$", re.I))
+    # Prefix match, not exact (`$`-anchored): confirmed via debug HTML that when the
+    # container has no working camera/mic (PulseAudio isn't set up in this Xvfb
+    # environment), Meet's actual aria-label is "Join now without microphone & camera",
+    # not bare "Join now" - an exact-match regex against that never matches, and no
+    # timeout/force-click workaround can fix a locator matching zero elements.
+    join_button = page.get_by_role("button", name=re.compile(r"^(join now|ask to join)", re.I))
     try:
         join_button.click(timeout=20_000)
     except PlaywrightTimeoutError as exc:
