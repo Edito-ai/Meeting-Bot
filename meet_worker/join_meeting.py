@@ -80,21 +80,31 @@ def join_meeting(context: BrowserContext, meet_url: str) -> tuple[Page, datetime
 
     join_button = page.get_by_role("button", name=re.compile(r"^(join now|ask to join)$", re.I))
     try:
-        # 45s, not 15s: on a resource-constrained VM the lobby (camera/mic preview, name
-        # field) can take a while to finish rendering before the button is click-stable -
-        # confirmed via debug screenshot that the button was present and normal-looking, just
-        # not yet actionable when a 15s attempt timed out.
-        join_button.click(timeout=45_000)
-    except PlaywrightTimeoutError:
-        # Join button never showed up at all - most likely Google blocked the reused auth
-        # state with a re-verification/sign-in screen. Dump what was actually on screen so
-        # this is debuggable after the fact instead of a bare timeout.
-        debug_dir = Path(os.environ.get("AUDIO_OUTPUT_DIR", "/app/data/audio")).parent / "debug"
-        debug_dir.mkdir(parents=True, exist_ok=True)
-        page.screenshot(path=str(debug_dir / "join_failure.png"))
-        (debug_dir / "join_failure.html").write_text(page.content(), encoding="utf-8")
-        logger.error("Join button never appeared. Page title=%r url=%r - see %s", page.title(), page.url, debug_dir)
-        raise
+        join_button.click(timeout=20_000)
+    except PlaywrightTimeoutError as exc:
+        # Debug screenshots have twice shown a completely normal, visually-clickable button
+        # at the moment of timeout - not a missing/covered button, but Playwright's click()
+        # actionability wait for a "stable" (non-moving) element never converging. That's a
+        # known Xvfb quirk: sub-pixel font/anti-aliasing jitter under a virtual display keeps
+        # the button's bounding box changing by ~1px frame to frame, so the stability check
+        # that a real headed browser would pass in a couple frames just never resolves here.
+        # force=True skips that stability wait (still requires attached+visible+enabled) -
+        # try it before concluding the button is genuinely missing.
+        try:
+            join_button.click(timeout=5000, force=True)
+            logger.warning("Join button click needed force=True (Xvfb stability-check quirk)")
+        except PlaywrightTimeoutError:
+            # Even force didn't work - the button really isn't there, most likely Google
+            # blocked the reused auth state with a re-verification/sign-in screen. Dump
+            # what was actually on screen so this is debuggable after the fact.
+            debug_dir = Path(os.environ.get("AUDIO_OUTPUT_DIR", "/app/data/audio")).parent / "debug"
+            debug_dir.mkdir(parents=True, exist_ok=True)
+            page.screenshot(path=str(debug_dir / "join_failure.png"))
+            (debug_dir / "join_failure.html").write_text(page.content(), encoding="utf-8")
+            logger.error(
+                "Join button never appeared. Page title=%r url=%r - see %s", page.title(), page.url, debug_dir
+            )
+            raise exc
 
     # Confirm we're actually in the call.
     page.get_by_role("button", name=re.compile("leave call", re.I)).wait_for(timeout=60_000)
