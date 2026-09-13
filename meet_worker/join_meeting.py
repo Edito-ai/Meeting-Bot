@@ -80,11 +80,15 @@ def join_meeting(context: BrowserContext, meet_url: str) -> tuple[Page, datetime
 
     join_button = page.get_by_role("button", name=re.compile(r"^(join now|ask to join)$", re.I))
     try:
-        join_button.click(timeout=15000)
+        # 45s, not 15s: on a resource-constrained VM the lobby (camera/mic preview, name
+        # field) can take a while to finish rendering before the button is click-stable -
+        # confirmed via debug screenshot that the button was present and normal-looking, just
+        # not yet actionable when a 15s attempt timed out.
+        join_button.click(timeout=45_000)
     except PlaywrightTimeoutError:
-        # Join button never showed up - most likely Google blocked the reused auth state
-        # with a re-verification/sign-in screen. Dump what was actually on screen so this
-        # is debuggable after the fact instead of a bare timeout.
+        # Join button never showed up at all - most likely Google blocked the reused auth
+        # state with a re-verification/sign-in screen. Dump what was actually on screen so
+        # this is debuggable after the fact instead of a bare timeout.
         debug_dir = Path(os.environ.get("AUDIO_OUTPUT_DIR", "/app/data/audio")).parent / "debug"
         debug_dir.mkdir(parents=True, exist_ok=True)
         page.screenshot(path=str(debug_dir / "join_failure.png"))
