@@ -75,7 +75,7 @@ nano .env
 
 Fill in at least:
 - `OPENROUTER_API_KEY`
-- `GOOGLE_CALENDAR_ID`, `DEMO_EVENT_KEYWORD`, `BOT_GOOGLE_EMAIL`, `BOT_DISPLAY_NAME`
+- `GOOGLE_CALENDAR_ID`, `BOT_GOOGLE_EMAIL`, `BOT_DISPLAY_NAME`
 - `PUBLIC_BASE_URL=http://<vm-external-ip>:8000` (used in links posted to Slack)
 - `SLACK_WEBHOOK_URL` / `SLACK_ENABLED` if you want notes posted to Slack
 

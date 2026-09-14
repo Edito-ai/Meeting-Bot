@@ -13,9 +13,9 @@ Two ways to run it:
 
 ## How it works
 
-1. **Backend** (FastAPI, `backend/`) polls Google Calendar every 30s for upcoming events
-   matching `DEMO_EVENT_KEYWORD`. When a matching event's start time is ~`JOIN_LEAD_MINUTES`
-   away, it enqueues a join job on Redis.
+1. **Backend** (FastAPI, `backend/`) polls Google Calendar every 30s for upcoming events with
+   a Google Meet link. When such an event's start time is ~`JOIN_LEAD_MINUTES` away, it
+   enqueues a join job on Redis.
 2. **meet-worker** (`meet_worker/`) picks up the job, joins the Meet using Playwright under a
    virtual display (Xvfb), mutes its own mic/camera, posts a chat message identifying itself,
    then for the rest of the call: tracks who's present via the People panel, scrapes live
@@ -116,8 +116,8 @@ sudo systemctl restart broll-backend broll-notes-worker broll-meet-worker broll-
 ```
 
 ## Verification checklist
-- Create a test Calendar event a few minutes out, titled with your `DEMO_EVENT_KEYWORD`, with
-  a Google Meet link. Confirm it shows up at `/` shortly after (backend discovers it within 30s).
+- Create a test Calendar event a few minutes out with a Google Meet link. Confirm it shows up
+  at `/` shortly after (backend discovers it within 30s).
 - Confirm meet-worker joins on time and posts its identification message in the call's chat.
 - Join the test call yourself from another account; confirm the attendance table on the
   meeting's detail page shows your join time (and leave time once you exit).

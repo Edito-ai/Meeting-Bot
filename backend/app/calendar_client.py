@@ -71,7 +71,6 @@ def _extract_meet_url(event: dict) -> str | None:
 def fetch_upcoming_demo_events(window_minutes: int = 60) -> list[CalendarEvent]:
     service = _get_service()
     calendar_id = os.environ.get("GOOGLE_CALENDAR_ID", "primary")
-    keyword = os.environ.get("DEMO_EVENT_KEYWORD", "demo").lower()
 
     now = datetime.now(timezone.utc)
     time_max = now + timedelta(minutes=window_minutes)
@@ -89,12 +88,13 @@ def fetch_upcoming_demo_events(window_minutes: int = 60) -> list[CalendarEvent]:
         .execute()
     )
 
+    # No title/keyword filter: real client demos get auto-generated titles from booking
+    # tools (e.g. "30 min meeting between broll and happydealsltd") that never contain
+    # the word "demo", so a keyword check silently dropped every real demo while only
+    # ever matching manually-titled internal test events. Any event on this calendar
+    # with a Meet link is treated as a demo to join.
     events: list[CalendarEvent] = []
     for item in result.get("items", []):
-        haystack = f"{item.get('summary', '')} {item.get('description', '')}".lower()
-        if keyword not in haystack:
-            continue
-
         meet_url = _extract_meet_url(item)
         start = _parse_iso((item.get("start") or {}).get("dateTime"))
         if not meet_url or not item.get("id") or not start:
