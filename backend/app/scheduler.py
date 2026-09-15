@@ -20,6 +20,17 @@ JOIN_LEAD_MINUTES = int(os.environ.get("JOIN_LEAD_MINUTES", "1"))
 # If we somehow missed the join window by more than this, don't join late/confuse attendees.
 MAX_LATE_JOIN_MINUTES = 5
 
+# Extra time beyond the scheduled meeting length that the RQ job_timeout must allow for -
+# the pre-join lead time plus a graceful shutdown (stop recording, leave the call, mark
+# left, enqueue transcription). Without this buffer, a job_timeout equal to the meeting's
+# exact length races the bot's own exit: the call stays "active" right up to its scheduled
+# end, so RQ kills the job mid-cleanup instead of it exiting on its own. This is what caused
+# every join_meeting_job for a 30-minute meeting to fail with "Task exceeded maximum timeout
+# value (1800 seconds)" even though the bot had joined and recorded successfully.
+JOB_TIMEOUT_BUFFER_MINUTES = 15
+# Used only if a calendar event has no end time (so meeting length can't be computed).
+DEFAULT_MEETING_DURATION_MINUTES = 30
+
 # How often to verify the bot's Google session still works, so a dead session (Google
 # invalidated it) gets caught and alerted on hours before it'd otherwise silently fail a
 # real demo join. See meet_worker.worker.check_session_health_job.
@@ -46,6 +57,15 @@ def _upsert_meeting(event: CalendarEvent) -> None:
         logger.exception("Could not add bot as a calendar guest for event %s", event["id"])
 
 
+def _job_timeout_seconds(meeting: dict) -> int:
+    start = meeting["scheduled_start"]
+    end = meeting.get("scheduled_end")
+    duration_minutes = (
+        (end - start).total_seconds() / 60 if end else DEFAULT_MEETING_DURATION_MINUTES
+    )
+    return int((duration_minutes + JOIN_LEAD_MINUTES + JOB_TIMEOUT_BUFFER_MINUTES) * 60)
+
+
 def _enqueue_due_meetings() -> None:
     due = repo.find_due_meetings(JOIN_LEAD_MINUTES, MAX_LATE_JOIN_MINUTES)
     queue = get_queue(QUEUE_JOIN_MEETING)
@@ -55,7 +75,7 @@ def _enqueue_due_meetings() -> None:
             "meet_worker.worker.join_meeting_job",
             meeting["id"],
             meeting["meet_url"],
-            job_timeout="30m",
+            job_timeout=_job_timeout_seconds(meeting),
         )
         logger.info("Enqueued join job for meeting %s", meeting["id"])
 

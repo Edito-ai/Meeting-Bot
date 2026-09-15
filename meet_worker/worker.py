@@ -35,6 +35,12 @@ def join_meeting_job(meeting_id: str, meet_url: str) -> None:
 
     with sync_playwright() as playwright:
         context = launch_authenticated_context(playwright)
+        page = None
+        recording_proc = None
+        audio_path = None
+        attendance = None
+        captions = None
+        error: Exception | None = None
         try:
             page, joined_at = join_meeting(context, meet_url)
             repo.mark_joined(meeting_id, joined_at)
@@ -57,14 +63,44 @@ def join_meeting_job(meeting_id: str, meet_url: str) -> None:
                     break
 
                 time.sleep(POLL_INTERVAL_SECONDS)
+        except Exception as exc:
+            # Caught here rather than only wrapping the whole function so a mid-call
+            # failure - an RQ job_timeout firing partway through the poll loop, a Meet
+            # page crash, etc. - still falls through to the cleanup below instead of
+            # leaving ffmpeg running as an orphan and the captured audio never handed
+            # to transcription.
+            logger.exception("Meeting %s ended abnormally", meeting_id)
+            error = exc
+        finally:
+            if page is not None:
+                try:
+                    if is_call_still_active(page):
+                        leave_meeting(page)
+                except Exception:
+                    logger.exception("Best-effort leave_meeting failed for %s", meeting_id)
+            if attendance is not None:
+                try:
+                    attendance.finalize()
+                except Exception:
+                    logger.exception("attendance.finalize failed for %s", meeting_id)
+            if captions is not None:
+                try:
+                    captions.finalize(attendance.current if attendance is not None else None)
+                except Exception:
+                    logger.exception("captions.finalize failed for %s", meeting_id)
+            if recording_proc is not None:
+                try:
+                    stop_recording(recording_proc)
+                except Exception:
+                    logger.exception("stop_recording failed for %s", meeting_id)
+            context.close()
 
-            attendance.finalize()
-            captions.finalize(attendance.current)
-            stop_recording(recording_proc)
-
+        if audio_path is not None:
+            # Recording started, so there's something worth transcribing even if the
+            # call ended abnormally - salvage it instead of discarding it as a hard failure.
             left_at = datetime.now(timezone.utc)
             repo.mark_left(meeting_id, left_at, audio_path)
-            repo.set_meeting_status(meeting_id, "transcribing")
+            repo.set_meeting_status(meeting_id, "transcribing", failure_reason=str(error) if error else None)
 
             get_queue(QUEUE_TRANSCRIBE).enqueue(
                 "transcription_worker.worker.transcribe_job",
@@ -73,11 +109,10 @@ def join_meeting_job(meeting_id: str, meet_url: str) -> None:
                 job_timeout="30m",
             )
             logger.info("Left meeting %s, queued transcription of %s", meeting_id, audio_path)
-        except Exception as exc:
-            logger.exception("Join-meeting job failed for %s", meeting_id)
-            repo.set_meeting_status(meeting_id, "failed", failure_reason=str(exc))
-        finally:
-            context.close()
+        else:
+            repo.set_meeting_status(
+                meeting_id, "failed", failure_reason=str(error) if error else "Unknown error before recording started"
+            )
 
 
 def check_session_health_job() -> None:
